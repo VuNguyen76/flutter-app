@@ -213,15 +213,20 @@ class DocumentNotifier extends _$DocumentNotifier {
       print('Sử dụng PDF ID hiện có: $pdfId');
     }
 
+    // Determine the correct file path
+    final filePath = document.isPdf
+        ? document.fileName
+        : document.fileName.replaceAll('.docx', '.pdf');
+
     // Chuyển đến màn hình ký tài liệu
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => SignatureScreen(
-          pdfId: pdfId!,
-          fileName: document.isPdf
-              ? document.fileName
-              : document.fileName.replaceAll('.docx', '.pdf'),
+          pdfId: pdfId,
+          pdfUrl: document.webUrl,
+          pdfBytes: document.pdfBytes,
+          filePath: filePath,
         ),
       ),
     );

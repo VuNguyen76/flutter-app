@@ -4,7 +4,7 @@ import 'package:universal_html/html.dart' as html;
 import 'dart:convert';
 import 'dart:ui_web' as ui_web;
 
-/// Widget đơn giản để hiển thị PDF trên web
+/// Widget đơn giản để hiển thị PDF trên web với các tùy chọn dự phòng
 class SimpleWebPdfViewer extends StatefulWidget {
   /// Dữ liệu bytes của PDF
   final Uint8List? pdfBytes;
@@ -34,31 +34,106 @@ class SimpleWebPdfViewer extends StatefulWidget {
 
 class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
   late final String _viewId;
-  late final String _pdfUrl;
+  late String _pdfUrl;
   bool _isInitialized = false;
+  bool _isLoading = true;
   String? _error;
   final String _uniqueViewerId =
       DateTime.now().millisecondsSinceEpoch.toString();
+
+  // Các chế độ xem PDF
+  bool _useDirectIframe = false;
+  bool _useGoogleViewer = false;
+  bool _useMicrosoftViewer = false;
+
+  // Trạng thái trình duyệt
+  late final Map<String, bool> _browserInfo;
 
   @override
   void initState() {
     super.initState();
     _viewId = 'pdf-view-$_uniqueViewerId';
+    _initBrowserInfo();
     _initializeViewer();
   }
 
+  /// Khởi tạo thông tin về trình duyệt
+  void _initBrowserInfo() {
+    _browserInfo = {};
+    try {
+      final userAgent = html.window.navigator.userAgent.toLowerCase();
+
+      // Xác định trình duyệt
+      _browserInfo['isChrome'] =
+          userAgent.contains('chrome') && !userAgent.contains('edge');
+      _browserInfo['isEdge'] = userAgent.contains('edg');
+      _browserInfo['isFirefox'] = userAgent.contains('firefox');
+      _browserInfo['isSafari'] =
+          userAgent.contains('safari') && !userAgent.contains('chrome');
+      _browserInfo['isIE'] =
+          userAgent.contains('trident') || userAgent.contains('msie');
+      _browserInfo['isOpera'] = userAgent.contains('opr');
+
+      // Platform
+      _browserInfo['isWindows'] = userAgent.contains('windows');
+      _browserInfo['isMac'] = userAgent.contains('mac');
+      _browserInfo['isLinux'] = userAgent.contains('linux');
+      _browserInfo['isAndroid'] = userAgent.contains('android');
+      _browserInfo['isIOS'] =
+          userAgent.contains('iphone') || userAgent.contains('ipad');
+
+      // Log thông tin
+      print(
+          'DEBUG: Thông tin trình duyệt: ${_browserInfo.entries.where((e) => e.value).map((e) => e.key).join(', ')}');
+    } catch (e) {
+      print('Lỗi khi xác định trình duyệt: $e');
+      _browserInfo['unknown'] = true;
+    }
+
+    // Quyết định chế độ xem dựa trên trình duyệt
+    _decideViewingMode();
+  }
+
+  /// Quyết định chế độ xem PDF dựa trên trình duyệt
+  void _decideViewingMode() {
+    // Always use direct iframe for all browsers
+    _useDirectIframe = true;
+    _useGoogleViewer = false;
+    _useMicrosoftViewer = false;
+
+    print('DEBUG: Chế độ xem PDF: sử dụng iframe trực tiếp');
+  }
+
+  /// Khởi tạo PDF viewer
   void _initializeViewer() {
     try {
       setState(() {
         _isInitialized = false;
+        _isLoading = true;
+        _error = null;
       });
 
+      // Xử lý URL hoặc bytes
       if (widget.pdfUrl != null) {
-        // Ưu tiên sử dụng URL nếu có
         _pdfUrl = widget.pdfUrl!;
-        print('Debug: Sử dụng URL PDF được cung cấp: $_pdfUrl');
+        print('DEBUG: Sử dụng URL PDF được cung cấp: $_pdfUrl');
+
+        final uri = Uri.tryParse(_pdfUrl);
+        if (uri == null) {
+          setState(() {
+            _error = 'URL PDF không hợp lệ';
+          });
+          return;
+        }
+
+        // Các tham số bổ sung để đảm bảo cache không gây vấn đề
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        if (_pdfUrl.contains('?')) {
+          _pdfUrl = '$_pdfUrl&_t=$timestamp';
+        } else {
+          _pdfUrl = '$_pdfUrl?_t=$timestamp';
+        }
       } else if (widget.pdfBytes != null) {
-        // Sử dụng bytes nếu không có URL
         if (widget.pdfBytes!.isEmpty) {
           setState(() {
             _error = 'PDF bytes trống';
@@ -66,19 +141,33 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
           return;
         }
 
-        // Kiểm tra vài byte đầu tiên để xác nhận đây là PDF
-        final header = widget.pdfBytes!.sublist(
-            0, widget.pdfBytes!.length > 5 ? 5 : widget.pdfBytes!.length);
-        final headerString = String.fromCharCodes(header);
-        if (!headerString.startsWith('%PDF')) {
-          print(
-              'WARNING: Byte đầu tiên không phải là PDF signature: ${header.map((e) => e.toRadixString(16)).join(' ')}');
+        // Kiểm tra PDF signature
+        if (widget.pdfBytes!.length > 4) {
+          final header = widget.pdfBytes!.sublist(0, 4);
+          final headerString = String.fromCharCodes(header);
+          final headerHex =
+              header.map((e) => e.toRadixString(16).padLeft(2, '0')).join(' ');
+
+          print('DEBUG: PDF header: $headerString (hex: $headerHex)');
+
+          if (!headerString.startsWith('%PDF')) {
+            print(
+                'CẢNH BÁO: Không tìm thấy PDF signature trong bytes: $headerHex');
+          }
         }
 
-        // Convert bytes to base64
-        final base64 = base64Encode(widget.pdfBytes!);
-        _pdfUrl = 'data:application/pdf;base64,$base64';
-        print('Debug: Đã tạo data URL cho PDF');
+        // Tạo Blob URL thay vì base64 để cải thiện hiệu suất
+        try {
+          final blob = html.Blob([widget.pdfBytes!], 'application/pdf');
+          _pdfUrl = html.Url.createObjectUrlFromBlob(blob);
+          print('DEBUG: Đã tạo Blob URL cho PDF: $_pdfUrl');
+        } catch (blobError) {
+          print('Lỗi khi tạo Blob URL: $blobError, sử dụng Base64 thay thế');
+          // Fallback to base64 if blob fails
+          final base64 = base64Encode(widget.pdfBytes!);
+          _pdfUrl = 'data:application/pdf;base64,$base64';
+          print('DEBUG: Đã tạo Base64 URL cho PDF (độ dài: ${base64.length})');
+        }
       } else {
         setState(() {
           _error = 'Không có dữ liệu PDF';
@@ -89,47 +178,18 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
       // Đăng ký factory cho HTML element
       ui_web.platformViewRegistry.registerViewFactory(_viewId, (int viewId) {
         try {
-          print('Debug: Tạo HTML element cho PDF viewer');
-
           // Tạo div container
           final container = html.DivElement()
             ..id = 'pdf-container-$_uniqueViewerId'
             ..style.width = '100%'
             ..style.height = '100%'
             ..style.overflow = 'hidden'
-            ..style.border = 'none';
-
-          // Đánh dấu container đã được tạo
-          print('Debug: Container đã được tạo với ID: ${container.id}');
-
-          // Tạo iframe cho xem PDF
-          final iframe = html.IFrameElement()
-            ..src = _pdfUrl
-            ..style.width = '100%'
-            ..style.height = '100%'
             ..style.border = 'none'
-            ..setAttribute('type', 'application/pdf')
-            ..setAttribute('title', 'PDF Viewer')
-            ..setAttribute('allowfullscreen', 'true')
-            ..setAttribute('webkitallowfullscreen', 'true')
-            ..setAttribute('mozallowfullscreen', 'true');
+            ..style.position = 'relative';
 
-          // Thêm iframe vào container
-          container.children.add(iframe);
-
-          // Thêm fallback cho trình duyệt không hỗ trợ PDF
-          final fallbackText = html.ParagraphElement()
-            ..text = 'Trình duyệt của bạn không hỗ trợ xem PDF trực tiếp. '
-            ..style.display = 'none';
-
-          final fallbackLink = html.AnchorElement()
-            ..href = _pdfUrl
-            ..target = '_blank'
-            ..text = 'Nhấn vào đây để mở PDF'
-            ..style.display = 'none';
-
-          container.children.add(fallbackText);
-          container.children.add(fallbackLink);
+          // Luôn sử dụng iframe trực tiếp
+          print('DEBUG: Sử dụng iframe trực tiếp');
+          _createDirectIframe(container);
 
           return container;
         } catch (e) {
@@ -141,11 +201,12 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
         }
       });
 
-      // Đánh dấu đã khởi tạo sau một khoảng thời gian nhỏ
-      Future.delayed(const Duration(milliseconds: 300), () {
+      // Đánh dấu đã khởi tạo sau một khoảng thời gian nhỏ để đảm bảo HTML element được tạo
+      Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) {
           setState(() {
             _isInitialized = true;
+            _isLoading = false;
           });
         }
       });
@@ -154,15 +215,115 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
       setState(() {
         _error = 'Lỗi: $e';
         _isInitialized = false;
+        _isLoading = false;
       });
+    }
+  }
+
+  /// Tạo iframe để xem PDF trực tiếp
+  void _createDirectIframe(html.DivElement container) {
+    try {
+      // Tạo iframe cho xem PDF trực tiếp
+      final iframe = html.IFrameElement()
+        ..src = _pdfUrl
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.border = 'none'
+        ..style.overflow = 'auto'
+        ..setAttribute('type', 'application/pdf')
+        ..setAttribute('title', 'PDF Viewer')
+        ..setAttribute('allowfullscreen', 'true')
+        ..setAttribute('webkitallowfullscreen', 'true')
+        ..setAttribute('mozallowfullscreen', 'true')
+        ..id = 'pdf-iframe-$_uniqueViewerId';
+
+      // Bắt sự kiện load để phát hiện lỗi
+      iframe.onLoad.listen((event) {
+        print('DEBUG: iframe đã tải xong');
+      });
+
+      iframe.onError.listen((event) {
+        print('DEBUG: Lỗi khi tải iframe: $event');
+      });
+
+      // Thêm iframe vào container
+      container.children.add(iframe);
+
+      // Thêm một lớp overlay để kiểm tra xem iframe có hiển thị được không
+      final overlay = html.DivElement()
+        ..id = 'pdf-overlay-$_uniqueViewerId'
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.position = 'absolute'
+        ..style.top = '0'
+        ..style.left = '0'
+        ..style.display = 'none'
+        ..style.alignItems = 'center'
+        ..style.justifyContent = 'center'
+        ..style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+
+      final overlayContent = html.DivElement()
+        ..style.textAlign = 'center'
+        ..style.padding = '20px';
+
+      final overlayText = html.ParagraphElement()
+        ..text = 'Không thể hiển thị PDF trực tiếp. Vui lòng mở trong tab mới:'
+        ..style.marginBottom = '15px'
+        ..style.color = 'red';
+
+      overlayContent.children.add(overlayText);
+
+      final openNewTabBtn = html.ButtonElement()
+        ..text = 'Mở trong tab mới'
+        ..style.margin = '5px'
+        ..style.padding = '8px 12px'
+        ..style.border = '1px solid #ccc'
+        ..style.backgroundColor = '#f0f0f0'
+        ..style.cursor = 'pointer';
+
+      openNewTabBtn.addEventListener('click', (event) {
+        event.preventDefault();
+        html.window.open(_pdfUrl, '_blank');
+      });
+
+      overlayContent.children.add(openNewTabBtn);
+      overlay.children.add(overlayContent);
+
+      container.children.add(overlay);
+
+      // Sau 3 giây kiểm tra xem iframe có hiển thị được không
+      Future.delayed(const Duration(seconds: 3), () {
+        try {
+          // Kiểm tra trạng thái iframe
+          if (iframe.contentWindow == null) {
+            print(
+                'DEBUG: iframe không có nội dung sau 3 giây, hiển thị overlay');
+            overlay.style.display = 'flex';
+          }
+        } catch (e) {
+          print('DEBUG: Lỗi khi kiểm tra iframe: $e');
+        }
+      });
+    } catch (e) {
+      print('DEBUG: Lỗi khi tạo iframe trực tiếp: $e');
+      // Thêm một thông báo lỗi vào container
+      container.children.add(html.ParagraphElement()
+        ..text = 'Lỗi khi hiển thị PDF: $e'
+        ..style.color = 'red'
+        ..style.padding = '10px');
     }
   }
 
   @override
   void dispose() {
-    // Giải phóng URL nếu được tạo từ bytes và là blob URL
+    // Giải phóng URL nếu đã tạo từ Blob
     if (widget.pdfBytes != null && _pdfUrl.startsWith('blob:')) {
-      html.Url.revokeObjectUrl(_pdfUrl);
+      try {
+        html.Url.revokeObjectUrl(_pdfUrl);
+        print('DEBUG: Đã giải phóng Blob URL: $_pdfUrl');
+      } catch (e) {
+        print('Lỗi khi giải phóng URL: $e');
+      }
     }
     super.dispose();
   }
@@ -170,13 +331,10 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
   @override
   void didUpdateWidget(SimpleWebPdfViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    // Kiểm tra xem đầu vào có thay đổi không
-    final urlChanged = widget.pdfUrl != oldWidget.pdfUrl;
-    final bytesChanged = widget.pdfBytes != oldWidget.pdfBytes;
-
-    if (urlChanged || bytesChanged) {
-      print('Debug: Đầu vào thay đổi, khởi tạo lại viewer');
+    // Kiểm tra nếu dữ liệu PDF thay đổi, khởi tạo lại viewer
+    if ((oldWidget.pdfBytes != widget.pdfBytes) ||
+        (oldWidget.pdfUrl != widget.pdfUrl)) {
+      print('DEBUG: Dữ liệu PDF đã thay đổi, khởi tạo lại viewer');
       _initializeViewer();
     }
   }
@@ -184,90 +342,76 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 16),
-            const Text('Lỗi hiển thị PDF',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            SelectableText(_error!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-            if (widget.pdfUrl != null)
-              ElevatedButton.icon(
+      return _buildErrorWidget();
+    }
+
+    if (_isLoading) {
+      return _buildLoadingWidget();
+    }
+
+    return SizedBox(
+      height: widget.height,
+      width: widget.width,
+      child: HtmlElementView(
+        viewType: _viewId,
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            _error ?? 'Lỗi không xác định',
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+          if (_pdfUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: TextButton.icon(
                 icon: const Icon(Icons.open_in_new),
                 label: const Text('Mở PDF trong tab mới'),
                 onPressed: () {
-                  html.window.open(widget.pdfUrl!, '_blank');
+                  html.window.open(_pdfUrl, '_blank');
                 },
               ),
-          ],
-        ),
-      );
-    }
+            ),
+        ],
+      ),
+    );
+  }
 
-    if (!_isInitialized) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Đang tải PDF...'),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        Expanded(
-          child: SizedBox(
-            width: widget.width,
-            height: widget.height,
-            child: Stack(
-              children: [
-                HtmlElementView(viewType: _viewId),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                    tooltip: 'Mở trong tab mới',
+  Widget _buildLoadingWidget() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          const Text('Đang tải PDF...'),
+          if (_pdfUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Mở trong tab mới'),
                     onPressed: () {
                       html.window.open(_pdfUrl, '_blank');
                     },
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tải lại'),
-                onPressed: _initializeViewer,
+                ],
               ),
-              const SizedBox(width: 16),
-              if (widget.pdfUrl != null || _pdfUrl.isNotEmpty)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Mở PDF trong tab mới'),
-                  onPressed: () {
-                    html.window.open(_pdfUrl, '_blank');
-                  },
-                ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
 }
@@ -342,8 +486,10 @@ class PdfDownloadButton extends StatelessWidget {
     final anchor = html.AnchorElement(href: url)
       ..setAttribute('download', safeFileName)
       ..setAttribute(
-          'target', '_blank') // Tránh các vấn đề với một số trình duyệt
-      ..click();
+          'target', '_blank'); // Tránh các vấn đề với một số trình duyệt
+
+    // Kích hoạt download
+    anchor.click();
 
     // Giải phóng URL sau một khoảng thời gian ngắn
     Future.delayed(const Duration(seconds: 1), () {

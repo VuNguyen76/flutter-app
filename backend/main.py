@@ -43,14 +43,50 @@ async def read_root():
 @app.get("/view/{pdf_id}")
 async def view_pdf(pdf_id: str):
     pdf_path = f"static/pdfs/{pdf_id}.pdf"
+    print(f"Yêu cầu xem PDF: {pdf_id}, đường dẫn: {pdf_path}")
+    
     if not os.path.exists(pdf_path):
+        print(f"PDF không tồn tại: {pdf_path}")
         raise HTTPException(status_code=404, detail="PDF không tồn tại")
     
-    return FileResponse(
+    # Ghi log kích thước file
+    file_size = os.path.getsize(pdf_path)
+    
+    # Kiểm tra file có phải PDF không và log chi tiết hơn
+    try:
+        with open(pdf_path, 'rb') as f:
+            header = f.read(10)  # Đọc nhiều byte hơn để kiểm tra kỹ lưỡng hơn
+            header_hex = ' '.join([f'{b:02x}' for b in header])
+            print(f"PDF header (hex): {header_hex}")
+            
+            # Kiểm tra signature của PDF
+            if not header.startswith(b'%PDF-'):
+                print(f"File không phải định dạng PDF, header: {header_hex}")
+                raise HTTPException(status_code=400, detail="File không phải định dạng PDF")
+            
+            # Log phiên bản PDF
+            pdf_version = header[5:8].decode('ascii', errors='ignore')
+            print(f"Phiên bản PDF: {pdf_version}")
+    except Exception as e:
+        print(f"Lỗi khi đọc file PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi khi đọc file: {str(e)}")
+    
+    print(f"Trả về file PDF: {pdf_path}, kích thước: {file_size} bytes")
+    
+    # Tạo response với các header rõ ràng hơn
+    response = FileResponse(
         path=pdf_path,
         media_type="application/pdf",
-        headers={"Content-Type": "application/pdf"}
+        headers={
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f"inline; filename={pdf_id}.pdf",
+            "Content-Length": str(file_size),
+            "Cache-Control": "no-cache",
+            "X-Content-Type-Options": "nosniff"
+        }
     )
+    
+    return response
 
 @app.post("/convert")
 async def convert_docx_to_pdf(file: UploadFile = File(...)):
@@ -228,13 +264,44 @@ def add_signatures_to_pdf(
 ) -> None:
     """Thêm chữ ký vào PDF"""
     try:
+        print(f"Bắt đầu thêm chữ ký vào PDF: {original_pdf_path}")
+        print(f"Chữ ký A: {signature_a_path}, Tên A: {signature_a_name}")
+        print(f"Chữ ký B: {signature_b_path}, Tên B: {signature_b_name}")
+        
+        # Kiểm tra file gốc
+        if not os.path.exists(original_pdf_path):
+            raise Exception(f"File PDF gốc không tồn tại: {original_pdf_path}")
+            
+        # Đọc và kiểm tra file PDF gốc
+        try:
+            with open(original_pdf_path, 'rb') as f:
+                header = f.read(10)
+                header_hex = ' '.join([f'{b:02x}' for b in header])
+                print(f"PDF gốc header (hex): {header_hex}")
+                
+                if not header.startswith(b'%PDF-'):
+                    raise Exception(f"File gốc không phải PDF hợp lệ, header: {header_hex}")
+                    
+            # Đặt lại con trỏ file
+            f.close()
+        except Exception as check_error:
+            print(f"Lỗi khi kiểm tra file PDF gốc: {str(check_error)}")
+            raise check_error
+        
         # Đọc PDF gốc
         reader = PdfReader(original_pdf_path)
+        print(f"Đã đọc PDF gốc, số trang: {len(reader.pages)}")
+        
+        # Kiểm tra số trang
+        if len(reader.pages) == 0:
+            raise Exception("PDF gốc không có trang nào")
+        
         writer = PdfWriter()
         
         # Thêm tất cả các trang từ PDF gốc vào writer
         for i in range(len(reader.pages)):
             writer.add_page(reader.pages[i])
+            print(f"Đã thêm trang {i+1}/{len(reader.pages)} vào writer")
         
         # Tạo overlay cho chữ ký
         signature_overlay = BytesIO()
@@ -242,6 +309,7 @@ def add_signatures_to_pdf(
         
         # Kích thước trang A4 (595 x 842 points)
         width, height = A4
+        print(f"Kích thước trang A4: {width} x {height} points")
         
         # Vẽ khung chữ ký ở cuối trang cuối cùng
         # Bên A - Bên trái
@@ -249,46 +317,101 @@ def add_signatures_to_pdf(
         c.rect(50, 100, 200, 120)  # x, y, width, height
         c.setFont("Helvetica-Bold", 12)
         c.drawString(90, 200, "ĐẠI DIỆN BÊN A")
+        print("Đã vẽ khung chữ ký bên A")
         
         # Thêm chữ ký và tên nếu có
         if signature_a_path:
-            img = Image.open(signature_a_path)
-            c.drawImage(ImageReader(img), 75, 120, width=150, preserveAspectRatio=True)
+            try:
+                if not os.path.exists(signature_a_path):
+                    print(f"CẢNH BÁO: File chữ ký A không tồn tại: {signature_a_path}")
+                else:
+                    img = Image.open(signature_a_path)
+                    img_width, img_height = img.size
+                    print(f"Đã mở ảnh chữ ký A, kích thước: {img_width}x{img_height} px")
+                    c.drawImage(ImageReader(img), 75, 120, width=150, preserveAspectRatio=True)
+                    print("Đã thêm ảnh chữ ký A vào PDF")
+            except Exception as img_error:
+                print(f"Lỗi khi thêm ảnh chữ ký A: {str(img_error)}")
+                # Tiếp tục mà không dừng lại
         
         if signature_a_name:
             c.setFont("Helvetica", 11)
             c.drawString(75, 105, signature_a_name)
+            print(f"Đã thêm tên A: {signature_a_name}")
         
         # Bên B - Bên phải
         c.setLineWidth(1)
         c.rect(345, 100, 200, 120)  # x, y, width, height
         c.setFont("Helvetica-Bold", 12)
         c.drawString(385, 200, "ĐẠI DIỆN BÊN B")
+        print("Đã vẽ khung chữ ký bên B")
         
         # Thêm chữ ký và tên nếu có
         if signature_b_path:
-            img = Image.open(signature_b_path)
-            c.drawImage(ImageReader(img), 370, 120, width=150, preserveAspectRatio=True)
+            try:
+                if not os.path.exists(signature_b_path):
+                    print(f"CẢNH BÁO: File chữ ký B không tồn tại: {signature_b_path}")
+                else:
+                    img = Image.open(signature_b_path)
+                    img_width, img_height = img.size
+                    print(f"Đã mở ảnh chữ ký B, kích thước: {img_width}x{img_height} px")
+                    c.drawImage(ImageReader(img), 370, 120, width=150, preserveAspectRatio=True)
+                    print("Đã thêm ảnh chữ ký B vào PDF")
+            except Exception as img_error:
+                print(f"Lỗi khi thêm ảnh chữ ký B: {str(img_error)}")
+                # Tiếp tục mà không dừng lại
         
         if signature_b_name:
             c.setFont("Helvetica", 11)
             c.drawString(370, 105, signature_b_name)
+            print(f"Đã thêm tên B: {signature_b_name}")
         
+        # Lưu canvas
         c.save()
+        print("Đã lưu canvas chữ ký")
         
         # Đọc overlay chữ ký
         signature_overlay.seek(0)
-        overlay_pdf = PdfReader(signature_overlay)
-        
-        # Áp dụng overlay lên trang cuối cùng của PDF
-        page = writer.pages[-1]
-        page.merge_page(overlay_pdf.pages[0])
-        
-        # Lưu PDF đã ký
-        with open(output_pdf_path, "wb") as output_file:
-            writer.write(output_file)
-        
-        print(f"Đã ký PDF thành công: {output_pdf_path}")
+        try:
+            overlay_pdf = PdfReader(signature_overlay)
+            print(f"Đã đọc overlay PDF, số trang: {len(overlay_pdf.pages)}")
+            
+            # Áp dụng overlay lên trang cuối cùng của PDF
+            page = writer.pages[-1]
+            page.merge_page(overlay_pdf.pages[0])
+            print("Đã merge overlay vào trang cuối cùng của PDF")
+            
+            # Tạo thư mục đích nếu không tồn tại
+            output_dir = os.path.dirname(output_pdf_path)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                print(f"Đã tạo thư mục đích: {output_dir}")
+            
+            # Lưu PDF đã ký
+            with open(output_pdf_path, "wb") as output_file:
+                writer.write(output_file)
+                print(f"Đã ghi PDF đã ký vào: {output_pdf_path}")
+            
+            # Kiểm tra file đã tạo
+            if os.path.exists(output_pdf_path):
+                file_size = os.path.getsize(output_pdf_path)
+                print(f"Đã ký PDF thành công: {output_pdf_path}, kích thước: {file_size} bytes")
+                
+                # Kiểm tra xem file có phải là PDF hợp lệ không
+                with open(output_pdf_path, 'rb') as f:
+                    check_header = f.read(10)
+                    check_header_hex = ' '.join([f'{b:02x}' for b in check_header])
+                    print(f"PDF đã ký header (hex): {check_header_hex}")
+                    
+                    if not check_header.startswith(b'%PDF-'):
+                        print(f"CẢNH BÁO: File đã ký có thể không phải PDF hợp lệ: {check_header_hex}")
+            else:
+                error_msg = f"Lỗi: File PDF đã ký không tồn tại sau khi lưu"
+                print(error_msg)
+                raise Exception(error_msg)
+        except Exception as pdf_error:
+            print(f"Lỗi khi xử lý overlay PDF: {str(pdf_error)}")
+            raise pdf_error
         
     except Exception as e:
         print(f"Lỗi khi thêm chữ ký vào PDF: {str(e)}")

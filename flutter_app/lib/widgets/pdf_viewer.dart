@@ -32,6 +32,68 @@ class PdfViewer extends HookConsumerWidget {
     final currentPageState = useState<int>(0);
     final isReady = useState<bool>(false);
     final isLoading = useState<bool>(false);
+    final error = useState<String?>(null);
+
+    // Debug info
+    useEffect(() {
+      print('PdfViewer - Khởi tạo với:');
+      print('- filePath: $filePath');
+      print(
+          '- pdfBytes: ${pdfBytes != null ? '${pdfBytes!.length} bytes' : 'null'}');
+      print('- pdfUrl: $pdfUrl');
+
+      if (pdfBytes != null && pdfBytes!.length > 4) {
+        final signature = String.fromCharCodes(pdfBytes!.sublist(0, 4));
+        print('- PDF signature: $signature');
+        if (signature != '%PDF') {
+          print('CẢNH BÁO: Dữ liệu không bắt đầu bằng %PDF');
+          print(
+              '- Bytes đầu: ${pdfBytes!.sublist(0, 20).map((e) => e.toRadixString(16)).join(' ')}');
+        }
+      }
+
+      return null;
+    }, const []);
+
+    // Hàm để kiểm tra và tải PDF từ URL nếu cần
+    Future<Uint8List?> loadPdfFromUrl() async {
+      if (pdfUrl == null) return null;
+
+      try {
+        print('Tải PDF từ URL: $pdfUrl');
+        final response = await http.get(Uri.parse(pdfUrl!));
+
+        if (response.statusCode == 200) {
+          final contentType = response.headers['content-type'];
+          print('Content-Type: $contentType');
+
+          if (contentType?.contains('application/pdf') == true ||
+              contentType?.contains('application/octet-stream') == true) {
+            // Kiểm tra signature PDF
+            if (response.bodyBytes.length > 4) {
+              final signature =
+                  String.fromCharCodes(response.bodyBytes.sublist(0, 4));
+              print('PDF signature từ URL: $signature');
+              if (signature != '%PDF') {
+                error.value = 'Dữ liệu tải về không phải là PDF';
+                return null;
+              }
+            }
+            return response.bodyBytes;
+          } else {
+            error.value = 'Server trả về sai kiểu dữ liệu: $contentType';
+            return null;
+          }
+        } else {
+          error.value =
+              'Lỗi tải PDF: ${response.statusCode} - ${response.body}';
+          return null;
+        }
+      } catch (e) {
+        error.value = 'Lỗi khi tải PDF: $e';
+        return null;
+      }
+    }
 
     // Hàm để tải PDF
     Future<void> downloadPdf() async {
@@ -42,13 +104,11 @@ class PdfViewer extends HookConsumerWidget {
           if (pdfBytes != null) {
             _downloadBytesOnWeb(pdfBytes!, _extractFileName(filePath));
           } else if (pdfUrl != null) {
-            final uri = Uri.parse(pdfUrl!);
-            final response = await http.get(uri);
-            if (response.statusCode == 200) {
-              _downloadBytesOnWeb(
-                  response.bodyBytes, _extractFileName(pdfUrl!));
+            final pdfData = await loadPdfFromUrl();
+            if (pdfData != null) {
+              _downloadBytesOnWeb(pdfData, _extractFileName(pdfUrl!));
             } else {
-              throw Exception('Failed to download PDF: ${response.statusCode}');
+              throw Exception('Không thể tải PDF từ URL');
             }
           } else {
             throw Exception('No PDF data available to download');
@@ -80,6 +140,52 @@ class PdfViewer extends HookConsumerWidget {
             child: Text('This view is only available on web platforms'));
       }
 
+      if (error.value != null) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_extractFileName(filePath)),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () {
+                  error.value = null;
+                },
+              ),
+            ],
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text('Lỗi khi hiển thị PDF',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: SelectableText(
+                    error.value!,
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (pdfUrl != null)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Mở trong trình duyệt'),
+                    onPressed: () {
+                      html.window.open(pdfUrl!, '_blank');
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      }
+
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -101,8 +207,29 @@ class PdfViewer extends HookConsumerWidget {
                   ? SimpleWebPdfViewer(pdfBytes: pdfBytes)
                   : pdfUrl != null
                       ? SimpleWebPdfViewer(pdfUrl: pdfUrl)
-                      : const Center(
-                          child: Text('Không có dữ liệu PDF để hiển thị')),
+                      : FutureBuilder<Uint8List?>(
+                          future: loadPdfFromUrl(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            } else if (snapshot.hasError) {
+                              error.value = 'Lỗi tải PDF: ${snapshot.error}';
+                              return Center(
+                                child: Text('Lỗi: ${snapshot.error}'),
+                              );
+                            } else if (snapshot.hasData &&
+                                snapshot.data != null) {
+                              return SimpleWebPdfViewer(
+                                  pdfBytes: snapshot.data);
+                            } else {
+                              return const Center(
+                                child: Text('Không có dữ liệu PDF để hiển thị'),
+                              );
+                            }
+                          },
+                        ),
             ),
             if (isLoading.value) const LinearProgressIndicator(),
           ],

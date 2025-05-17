@@ -49,18 +49,14 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
 
   void _initializeViewer() {
     try {
+      setState(() {
+        _isInitialized = false;
+      });
+
       if (widget.pdfUrl != null) {
         // Ưu tiên sử dụng URL nếu có
         _pdfUrl = widget.pdfUrl!;
         print('Debug: Sử dụng URL PDF được cung cấp: $_pdfUrl');
-        // Đánh dấu đã sẵn sàng ngay lập tức cho URL trực tiếp
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-            });
-          }
-        });
       } else if (widget.pdfBytes != null) {
         // Sử dụng bytes nếu không có URL
         if (widget.pdfBytes!.isEmpty) {
@@ -79,10 +75,10 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
               'WARNING: Byte đầu tiên không phải là PDF signature: ${header.map((e) => e.toRadixString(16)).join(' ')}');
         }
 
-        final blob = html.Blob([widget.pdfBytes!], 'application/pdf');
-        _pdfUrl = html.Url.createObjectUrlFromBlob(blob);
-
-        print('Debug: Đã tạo blob URL cho PDF: $_pdfUrl');
+        // Convert bytes to base64
+        final base64 = base64Encode(widget.pdfBytes!);
+        _pdfUrl = 'data:application/pdf;base64,$base64';
+        print('Debug: Đã tạo data URL cho PDF');
       } else {
         setState(() {
           _error = 'Không có dữ liệu PDF';
@@ -100,62 +96,40 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
             ..id = 'pdf-container-$_uniqueViewerId'
             ..style.width = '100%'
             ..style.height = '100%'
-            ..style.border = '1px solid #ddd';
+            ..style.overflow = 'hidden'
+            ..style.border = 'none';
 
           // Đánh dấu container đã được tạo
           print('Debug: Container đã được tạo với ID: ${container.id}');
 
-          // Sử dụng object tag thay vì iframe để hiển thị PDF tốt hơn
-          if (widget.pdfUrl != null || !_pdfUrl.startsWith('blob:')) {
-            print('Debug: Sử dụng object tag cho URL trực tiếp');
-            final object = html.ObjectElement()
-              ..type = 'application/pdf'
-              ..data = _pdfUrl
-              ..style.width = '100%'
-              ..style.height = '100%';
+          // Tạo iframe cho xem PDF
+          final iframe = html.IFrameElement()
+            ..src = _pdfUrl
+            ..style.width = '100%'
+            ..style.height = '100%'
+            ..style.border = 'none'
+            ..setAttribute('type', 'application/pdf')
+            ..setAttribute('title', 'PDF Viewer')
+            ..setAttribute('allowfullscreen', 'true')
+            ..setAttribute('webkitallowfullscreen', 'true')
+            ..setAttribute('mozallowfullscreen', 'true');
 
-            object.onLoad.listen((_) {
-              print('Debug: Object đã tải xong');
-              if (mounted) {
-                setState(() {
-                  _isInitialized = true;
-                });
-              }
-            });
+          // Thêm iframe vào container
+          container.children.add(iframe);
 
-            container.children.add(object);
-          } else {
-            print('Debug: Sử dụng iframe cho blob URL');
-            // Tạo iframe trực tiếp cho blob URL
-            final iframe = html.IFrameElement()
-              ..src = _pdfUrl
-              ..style.width = '100%'
-              ..style.height = '100%'
-              ..style.border = 'none'
-              ..setAttribute('type', 'application/pdf')
-              ..setAttribute('title', 'PDF Viewer');
+          // Thêm fallback cho trình duyệt không hỗ trợ PDF
+          final fallbackText = html.ParagraphElement()
+            ..text = 'Trình duyệt của bạn không hỗ trợ xem PDF trực tiếp. '
+            ..style.display = 'none';
 
-            iframe.onLoad.listen((_) {
-              print('Debug: iframe đã tải xong');
-              if (mounted) {
-                setState(() {
-                  _isInitialized = true;
-                });
-              }
-            });
+          final fallbackLink = html.AnchorElement()
+            ..href = _pdfUrl
+            ..target = '_blank'
+            ..text = 'Nhấn vào đây để mở PDF'
+            ..style.display = 'none';
 
-            container.children.add(iframe);
-          }
-
-          // Đánh dấu đã sẵn sàng sau một timeout để đảm bảo
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted && !_isInitialized) {
-              print('Debug: Force init viewer sau timeout');
-              setState(() {
-                _isInitialized = true;
-              });
-            }
-          });
+          container.children.add(fallbackText);
+          container.children.add(fallbackLink);
 
           return container;
         } catch (e) {
@@ -166,21 +140,45 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
           return html.DivElement()..text = 'Lỗi: $e';
         }
       });
+
+      // Đánh dấu đã khởi tạo sau một khoảng thời gian nhỏ
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+      });
     } catch (e) {
       print('Lỗi khởi tạo PDF viewer: $e');
       setState(() {
         _error = 'Lỗi: $e';
+        _isInitialized = false;
       });
     }
   }
 
   @override
   void dispose() {
-    // Giải phóng URL nếu được tạo từ bytes
-    if (widget.pdfBytes != null) {
+    // Giải phóng URL nếu được tạo từ bytes và là blob URL
+    if (widget.pdfBytes != null && _pdfUrl.startsWith('blob:')) {
       html.Url.revokeObjectUrl(_pdfUrl);
     }
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(SimpleWebPdfViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Kiểm tra xem đầu vào có thay đổi không
+    final urlChanged = widget.pdfUrl != oldWidget.pdfUrl;
+    final bytesChanged = widget.pdfBytes != oldWidget.pdfBytes;
+
+    if (urlChanged || bytesChanged) {
+      print('Debug: Đầu vào thay đổi, khởi tạo lại viewer');
+      _initializeViewer();
+    }
   }
 
   @override
@@ -190,44 +188,86 @@ class _SimpleWebPdfViewerState extends State<SimpleWebPdfViewer> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
-            Text('Lỗi hiển thị PDF',
+            const Text('Lỗi hiển thị PDF',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            SelectableText(_error!, style: TextStyle(color: Colors.red)),
+            SelectableText(_error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            if (widget.pdfUrl != null)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Mở PDF trong tab mới'),
+                onPressed: () {
+                  html.window.open(widget.pdfUrl!, '_blank');
+                },
+              ),
           ],
         ),
       );
     }
 
     if (!_isInitialized) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Đang tải PDF viewer...'),
-            // Thêm nút để buộc hiển thị nếu bị kẹt
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _isInitialized = true;
-                });
-              },
-              child: Text('Hiển thị ngay'),
-            ),
+            Text('Đang tải PDF...'),
           ],
         ),
       );
     }
 
-    return SizedBox(
-      width: widget.width,
-      height: widget.height,
-      child: HtmlElementView(viewType: _viewId),
+    return Column(
+      children: [
+        Expanded(
+          child: SizedBox(
+            width: widget.width,
+            height: widget.height,
+            child: Stack(
+              children: [
+                HtmlElementView(viewType: _viewId),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.open_in_new, color: Colors.blue),
+                    tooltip: 'Mở trong tab mới',
+                    onPressed: () {
+                      html.window.open(_pdfUrl, '_blank');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tải lại'),
+                onPressed: _initializeViewer,
+              ),
+              const SizedBox(width: 16),
+              if (widget.pdfUrl != null || _pdfUrl.isNotEmpty)
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Mở PDF trong tab mới'),
+                  onPressed: () {
+                    html.window.open(_pdfUrl, '_blank');
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

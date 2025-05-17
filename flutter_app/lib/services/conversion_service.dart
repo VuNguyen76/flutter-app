@@ -10,12 +10,14 @@ class PdfData {
   final String? filePath; // Đường dẫn cho mobile
   final Uint8List? bytes; // Bytes cho web
   final String? webUrl; // URL cho web (optional)
+  final String? pdfId; // ID của PDF để sử dụng sau này (ký tên)
 
   PdfData({
     required this.fileName,
     this.filePath,
     this.bytes,
     this.webUrl,
+    this.pdfId,
   });
 }
 
@@ -34,9 +36,9 @@ class ConversionService {
 
   /// Chuyển đổi file DOCX sang PDF trên thiết bị di động
   ///
-  /// Trả về đường dẫn tới file PDF đã chuyển đổi nếu thành công
+  /// Trả về đối tượng PdfData chứa thông tin file PDF đã chuyển đổi nếu thành công
   /// Ném ra ngoại lệ nếu xảy ra lỗi
-  Future<String> convertDocxToPdf(File docxFile) async {
+  Future<PdfData> convertDocxToPdf(File docxFile) async {
     try {
       final url = Uri.parse('$baseUrl/convert');
 
@@ -66,33 +68,75 @@ class ConversionService {
             'Lỗi API: ${streamedResponse.statusCode} - $responseBody');
       }
 
+      // Ghi log headers để debug
+      print('Response headers: ${streamedResponse.headers}');
+
       // Kiểm tra Content-Type
       final contentType = streamedResponse.headers['content-type'];
       if (contentType == null || !contentType.contains('application/pdf')) {
         throw Exception('Phản hồi không phải là PDF: $contentType');
       }
 
-      // Lưu file PDF vào bộ nhớ thiết bị
-      final tempDir = await getTemporaryDirectory();
-      final fileName = path.basenameWithoutExtension(docxFile.path);
-      final pdfFile = File('${tempDir.path}/$fileName.pdf');
-
-      final fileBytes = await streamedResponse.stream.toBytes();
+      // Lấy bytes của PDF đã chuyển đổi
+      final pdfBytes = await streamedResponse.stream.toBytes();
 
       // Kiểm tra nếu không có bytes
-      if (fileBytes.isEmpty) {
+      if (pdfBytes.isEmpty) {
         throw Exception('Không nhận được dữ liệu PDF từ server');
       }
 
-      await pdfFile.writeAsBytes(fileBytes);
+      // Lưu file PDF vào bộ nhớ thiết bị
+      final tempDir = await getTemporaryDirectory();
+      final fileName = path.basenameWithoutExtension(docxFile.path);
+      final newFileName = '$fileName.pdf';
+      final pdfFile = File('${tempDir.path}/$newFileName');
+
+      await pdfFile.writeAsBytes(pdfBytes);
 
       // Kiểm tra file đã tồn tại
       if (!await pdfFile.exists()) {
         throw Exception('Không thể lưu file PDF');
       }
 
-      return pdfFile.path;
+      // Lấy URL xem PDF từ header nếu có
+      String? pdfViewUrl;
+      if (streamedResponse.headers.containsKey('x-pdf-view-url')) {
+        final urlPath = streamedResponse.headers['x-pdf-view-url']!;
+        pdfViewUrl = '$baseUrl$urlPath';
+        print('URL xem PDF: $pdfViewUrl');
+      }
+
+      // Lấy PDF ID từ header nếu có
+      String? pdfId;
+      if (streamedResponse.headers.containsKey('x-pdf-id')) {
+        pdfId = streamedResponse.headers['x-pdf-id'];
+        print('PDF ID từ header: $pdfId');
+      } else if (pdfViewUrl != null) {
+        // Cố gắng lấy PDF ID từ URL nếu có
+        final uri = Uri.parse(pdfViewUrl);
+        final segments = uri.pathSegments;
+        if (segments.length >= 2 && segments[0] == 'view') {
+          pdfId = segments[1];
+          print('Trích xuất PDF ID từ URL: $pdfId');
+        }
+      }
+
+      if (pdfId == null) {
+        // Tạo PDF ID nếu không có
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        pdfId = 'local_${timestamp}_${newFileName.hashCode}';
+        print('Tạo PDF ID mới: $pdfId');
+      }
+
+      return PdfData(
+        fileName: newFileName,
+        filePath: pdfFile.path,
+        bytes: pdfBytes,
+        webUrl: pdfViewUrl,
+        pdfId: pdfId,
+      );
     } catch (e) {
+      print('Lỗi chi tiết khi chuyển đổi: $e');
       throw Exception('Lỗi khi chuyển đổi file: $e');
     }
   }
@@ -193,10 +237,29 @@ class ConversionService {
         print('Tất cả headers: ${streamedResponse.headers}');
       }
 
+      // Lấy PDF ID từ header nếu có
+      String? pdfId;
+      if (streamedResponse.headers.containsKey('x-pdf-id')) {
+        pdfId = streamedResponse.headers['x-pdf-id'];
+        print('PDF ID: $pdfId');
+      } else {
+        // Cố gắng lấy PDF ID từ URL nếu có
+        if (pdfViewUrl != null) {
+          // URL có dạng baseUrl/view/{pdf_id}
+          final uri = Uri.parse(pdfViewUrl);
+          final segments = uri.pathSegments;
+          if (segments.length >= 2 && segments[0] == 'view') {
+            pdfId = segments[1];
+            print('Trích xuất PDF ID từ URL: $pdfId');
+          }
+        }
+      }
+
       return PdfData(
         fileName: newFileName,
         bytes: pdfBytes,
         webUrl: pdfViewUrl,
+        pdfId: pdfId,
       );
     } catch (e) {
       print('Lỗi chi tiết: $e');

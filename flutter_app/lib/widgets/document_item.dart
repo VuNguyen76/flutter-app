@@ -6,151 +6,186 @@ class DocumentItem extends StatelessWidget {
   final VoidCallback onConvert;
   final VoidCallback onView;
   final VoidCallback onDelete;
+  final VoidCallback? onSign;
 
   const DocumentItem({
-    super.key,
+    Key? key,
     required this.document,
     required this.onConvert,
     required this.onView,
     required this.onDelete,
-  });
+    this.onSign,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 1,
       margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon theo loại file
                 Icon(
-                  document.isPdf
-                      ? Icons.picture_as_pdf
-                      : Icons.insert_drive_file,
-                  color: document.isPdf ? Colors.red : Colors.blue,
-                  size: 32,
+                  document.isPdf ? Icons.picture_as_pdf : Icons.file_present,
+                  color: document.isPdf ? Colors.red : const Color(0xFF2196F3),
+                  size: 28,
                 ),
                 const SizedBox(width: 12),
-                // Tên file và trạng thái
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        document.fileName,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      _buildStatusText(),
-                    ],
+                  child: Text(
+                    document.fileName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
-                // Nút xóa
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: onDelete,
-                  color: Colors.red.shade300,
-                  tooltip: 'Xóa tài liệu',
                 ),
               ],
             ),
-
-            if (document.error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SelectableText.rich(
-                  TextSpan(
-                    text: 'Lỗi: ${document.error}',
-                    style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                // Status indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
                   ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _getStatusText(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                _buildActionButtons(context),
+              ],
+            ),
+            if (document.error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red.shade700,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Lỗi: ${document.error}',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-
-            const SizedBox(height: 16),
-
-            // Các nút hành động
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (!document.isPdf &&
-                    !document.isConverted &&
-                    !document.isConverting)
-                  ElevatedButton.icon(
-                    onPressed: onConvert,
-                    icon: const Icon(Icons.transform),
-                    label: const Text('Chuyển đổi'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                if (document.isConverting)
-                  ElevatedButton.icon(
-                    onPressed: null,
-                    icon: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                    label: const Text('Đang chuyển đổi...'),
-                    style: ElevatedButton.styleFrom(
-                      disabledBackgroundColor: Colors.blue.shade300,
-                      disabledForegroundColor: Colors.white,
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                if (document.isPdf || document.isConverted)
-                  OutlinedButton.icon(
-                    onPressed: onView,
-                    icon: const Icon(Icons.remove_red_eye),
-                    label: const Text('Xem'),
-                  ),
-              ],
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusText() {
-    final Color textColor;
-    final String statusText;
-
-    if (document.isPdf) {
-      textColor = Colors.green.shade700;
-      statusText = 'Tệp PDF';
-    } else if (document.isConverted) {
-      textColor = Colors.green.shade700;
-      statusText = 'Đã chuyển đổi sang PDF';
-    } else if (document.isConverting) {
-      textColor = Colors.orange.shade700;
-      statusText = 'Đang chuyển đổi...';
-    } else {
-      textColor = Colors.grey.shade700;
-      statusText = 'Tệp DOCX';
-    }
-
-    return Text(
-      statusText,
-      style: TextStyle(
-        color: textColor,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
+  Widget _buildActionButtons(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!document.isPdf && !document.isConverted)
+          IconButton(
+            icon: const Icon(
+              Icons.sync,
+              color: Color(0xFF2196F3), // Light Blue 500
+            ),
+            tooltip: 'Chuyển đổi sang PDF',
+            onPressed: document.isConverting ? null : onConvert,
+          ),
+        if (document.isPdf || document.isConverted)
+          IconButton(
+            icon: const Icon(
+              Icons.visibility,
+              color: Color(0xFF2196F3), // Light Blue 500
+            ),
+            tooltip: 'Xem tài liệu',
+            onPressed: onView,
+          ),
+        // Thêm nút ký tài liệu nếu tài liệu là PDF hoặc đã chuyển đổi và có onSign callback
+        if ((document.isPdf || document.isConverted) && onSign != null)
+          IconButton(
+            icon: Icon(
+              document.isSigned ? Icons.done_all : Icons.draw,
+              color: document.isSigned
+                  ? Colors.green
+                  : const Color(0xFF2196F3), // Light Blue 500
+            ),
+            tooltip: document.isSigned ? 'Đã ký' : 'Ký tài liệu',
+            onPressed: document.isSigned ? null : onSign,
+          ),
+        IconButton(
+          icon: Icon(
+            Icons.delete,
+            color: Colors.grey.shade600,
+          ),
+          tooltip: 'Xóa tài liệu',
+          onPressed: onDelete,
+        ),
+      ],
     );
+  }
+
+  Color _getStatusColor() {
+    if (document.isConverting) {
+      return Colors.orange;
+    } else if (document.error != null) {
+      return Colors.red;
+    } else if (document.isSigned) {
+      return Colors.green;
+    } else if (document.isConverted) {
+      return const Color(0xFF2196F3); // Light Blue 500
+    } else if (document.isPdf) {
+      return const Color(0xFF9C27B0); // Purple 500
+    } else {
+      return Colors.grey;
+    }
+  }
+
+  String _getStatusText() {
+    if (document.isConverting) {
+      return 'Đang chuyển đổi...';
+    } else if (document.error != null) {
+      return 'Lỗi';
+    } else if (document.isSigned) {
+      return 'Đã ký';
+    } else if (document.isConverted) {
+      return 'Đã chuyển đổi';
+    } else if (document.isPdf) {
+      return 'PDF';
+    } else {
+      return 'DOCX';
+    }
   }
 }

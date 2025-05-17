@@ -30,8 +30,10 @@ class DocumentModel with _$DocumentModel {
     @Uint8ListConverter() Uint8List? bytes,
     @Uint8ListConverter() Uint8List? pdfBytes,
     String? webUrl,
+    String? pdfId,
     @Default(false) bool isConverting,
     @Default(false) bool isConverted,
+    @Default(false) bool isSigned,
     String? error,
   }) = _DocumentModel;
 

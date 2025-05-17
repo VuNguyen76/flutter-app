@@ -29,8 +29,10 @@ mixin _$DocumentModel {
   @Uint8ListConverter()
   Uint8List? get pdfBytes => throw _privateConstructorUsedError;
   String? get webUrl => throw _privateConstructorUsedError;
+  String? get pdfId => throw _privateConstructorUsedError;
   bool get isConverting => throw _privateConstructorUsedError;
   bool get isConverted => throw _privateConstructorUsedError;
+  bool get isSigned => throw _privateConstructorUsedError;
   String? get error => throw _privateConstructorUsedError;
 
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -53,8 +55,10 @@ abstract class $DocumentModelCopyWith<$Res> {
       @Uint8ListConverter() Uint8List? bytes,
       @Uint8ListConverter() Uint8List? pdfBytes,
       String? webUrl,
+      String? pdfId,
       bool isConverting,
       bool isConverted,
+      bool isSigned,
       String? error});
 }
 
@@ -78,8 +82,10 @@ class _$DocumentModelCopyWithImpl<$Res, $Val extends DocumentModel>
     Object? bytes = freezed,
     Object? pdfBytes = freezed,
     Object? webUrl = freezed,
+    Object? pdfId = freezed,
     Object? isConverting = null,
     Object? isConverted = null,
+    Object? isSigned = null,
     Object? error = freezed,
   }) {
     return _then(_value.copyWith(
@@ -111,6 +117,10 @@ class _$DocumentModelCopyWithImpl<$Res, $Val extends DocumentModel>
           ? _value.webUrl
           : webUrl // ignore: cast_nullable_to_non_nullable
               as String?,
+      pdfId: freezed == pdfId
+          ? _value.pdfId
+          : pdfId // ignore: cast_nullable_to_non_nullable
+              as String?,
       isConverting: null == isConverting
           ? _value.isConverting
           : isConverting // ignore: cast_nullable_to_non_nullable
@@ -118,6 +128,10 @@ class _$DocumentModelCopyWithImpl<$Res, $Val extends DocumentModel>
       isConverted: null == isConverted
           ? _value.isConverted
           : isConverted // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isSigned: null == isSigned
+          ? _value.isSigned
+          : isSigned // ignore: cast_nullable_to_non_nullable
               as bool,
       error: freezed == error
           ? _value.error
@@ -143,8 +157,10 @@ abstract class _$$DocumentModelImplCopyWith<$Res>
       @Uint8ListConverter() Uint8List? bytes,
       @Uint8ListConverter() Uint8List? pdfBytes,
       String? webUrl,
+      String? pdfId,
       bool isConverting,
       bool isConverted,
+      bool isSigned,
       String? error});
 }
 
@@ -166,8 +182,10 @@ class __$$DocumentModelImplCopyWithImpl<$Res>
     Object? bytes = freezed,
     Object? pdfBytes = freezed,
     Object? webUrl = freezed,
+    Object? pdfId = freezed,
     Object? isConverting = null,
     Object? isConverted = null,
+    Object? isSigned = null,
     Object? error = freezed,
   }) {
     return _then(_$DocumentModelImpl(
@@ -199,6 +217,10 @@ class __$$DocumentModelImplCopyWithImpl<$Res>
           ? _value.webUrl
           : webUrl // ignore: cast_nullable_to_non_nullable
               as String?,
+      pdfId: freezed == pdfId
+          ? _value.pdfId
+          : pdfId // ignore: cast_nullable_to_non_nullable
+              as String?,
       isConverting: null == isConverting
           ? _value.isConverting
           : isConverting // ignore: cast_nullable_to_non_nullable
@@ -206,6 +228,10 @@ class __$$DocumentModelImplCopyWithImpl<$Res>
       isConverted: null == isConverted
           ? _value.isConverted
           : isConverted // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isSigned: null == isSigned
+          ? _value.isSigned
+          : isSigned // ignore: cast_nullable_to_non_nullable
               as bool,
       error: freezed == error
           ? _value.error
@@ -226,8 +252,10 @@ class _$DocumentModelImpl implements _DocumentModel {
       @Uint8ListConverter() this.bytes,
       @Uint8ListConverter() this.pdfBytes,
       this.webUrl,
+      this.pdfId,
       this.isConverting = false,
       this.isConverted = false,
+      this.isSigned = false,
       this.error});
 
   factory _$DocumentModelImpl.fromJson(Map<String, dynamic> json) =>
@@ -250,17 +278,22 @@ class _$DocumentModelImpl implements _DocumentModel {
   @override
   final String? webUrl;
   @override
+  final String? pdfId;
+  @override
   @JsonKey()
   final bool isConverting;
   @override
   @JsonKey()
   final bool isConverted;
   @override
+  @JsonKey()
+  final bool isSigned;
+  @override
   final String? error;
 
   @override
   String toString() {
-    return 'DocumentModel(fileName: $fileName, path: $path, isPdf: $isPdf, pdfPath: $pdfPath, bytes: $bytes, pdfBytes: $pdfBytes, webUrl: $webUrl, isConverting: $isConverting, isConverted: $isConverted, error: $error)';
+    return 'DocumentModel(fileName: $fileName, path: $path, isPdf: $isPdf, pdfPath: $pdfPath, bytes: $bytes, pdfBytes: $pdfBytes, webUrl: $webUrl, pdfId: $pdfId, isConverting: $isConverting, isConverted: $isConverted, isSigned: $isSigned, error: $error)';
   }
 
   @override
@@ -276,10 +309,13 @@ class _$DocumentModelImpl implements _DocumentModel {
             const DeepCollectionEquality().equals(other.bytes, bytes) &&
             const DeepCollectionEquality().equals(other.pdfBytes, pdfBytes) &&
             (identical(other.webUrl, webUrl) || other.webUrl == webUrl) &&
+            (identical(other.pdfId, pdfId) || other.pdfId == pdfId) &&
             (identical(other.isConverting, isConverting) ||
                 other.isConverting == isConverting) &&
             (identical(other.isConverted, isConverted) ||
                 other.isConverted == isConverted) &&
+            (identical(other.isSigned, isSigned) ||
+                other.isSigned == isSigned) &&
             (identical(other.error, error) || other.error == error));
   }
 
@@ -294,8 +330,10 @@ class _$DocumentModelImpl implements _DocumentModel {
       const DeepCollectionEquality().hash(bytes),
       const DeepCollectionEquality().hash(pdfBytes),
       webUrl,
+      pdfId,
       isConverting,
       isConverted,
+      isSigned,
       error);
 
   @JsonKey(ignore: true)
@@ -321,8 +359,10 @@ abstract class _DocumentModel implements DocumentModel {
       @Uint8ListConverter() final Uint8List? bytes,
       @Uint8ListConverter() final Uint8List? pdfBytes,
       final String? webUrl,
+      final String? pdfId,
       final bool isConverting,
       final bool isConverted,
+      final bool isSigned,
       final String? error}) = _$DocumentModelImpl;
 
   factory _DocumentModel.fromJson(Map<String, dynamic> json) =
@@ -345,9 +385,13 @@ abstract class _DocumentModel implements DocumentModel {
   @override
   String? get webUrl;
   @override
+  String? get pdfId;
+  @override
   bool get isConverting;
   @override
   bool get isConverted;
+  @override
+  bool get isSigned;
   @override
   String? get error;
   @override

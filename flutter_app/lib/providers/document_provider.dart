@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/document_model.dart';
 import '../services/conversion_service.dart';
+import '../screens/signature_screen.dart';
 
 part 'document_provider.g.dart';
 
@@ -39,7 +41,14 @@ class DocumentNotifier extends _$DocumentNotifier {
             path: 'web_file', // Giá trị tạm thời cho path trên web
             isPdf: isPdf,
             bytes: file.bytes,
+            pdfId: isPdf
+                ? _generateTempPdfId(fileName)
+                : null, // Tạo ID tạm nếu là PDF
           );
+
+          if (isPdf) {
+            print('Tạo PDF ID cho file đã chọn: ${document.pdfId}');
+          }
 
           state = AsyncData([...state.valueOrNull ?? [], document]);
         }
@@ -52,12 +61,25 @@ class DocumentNotifier extends _$DocumentNotifier {
             fileName: file.name,
             path: file.path!,
             isPdf: isPdf,
+            pdfId: isPdf
+                ? _generateTempPdfId(file.name)
+                : null, // Tạo ID tạm nếu là PDF
           );
+
+          if (isPdf) {
+            print('Tạo PDF ID cho file đã chọn: ${document.pdfId}');
+          }
 
           state = AsyncData([...state.valueOrNull ?? [], document]);
         }
       }
     }
+  }
+
+  // Helper để tạo PDF ID tạm thời cho các file PDF được chọn trực tiếp
+  String _generateTempPdfId(String fileName) {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return 'local_${timestamp}_${fileName.hashCode}';
   }
 
   Future<void> convertDocument(int index) async {
@@ -95,6 +117,16 @@ class DocumentNotifier extends _$DocumentNotifier {
           print('Không có URL PDF trực tiếp, sẽ sử dụng blob URL');
         }
 
+        // Lấy PDF ID từ response
+        String? pdfId = pdfData.pdfId;
+        if (pdfId != null && pdfId.isNotEmpty) {
+          print('Nhận được PDF ID từ server: $pdfId');
+        } else {
+          // Tạo PDF ID nếu không có từ server
+          pdfId = _generateTempPdfId(docToConvert.fileName);
+          print('Không nhận được PDF ID từ server, tạo ID tạm: $pdfId');
+        }
+
         // Cập nhật trạng thái đã chuyển đổi thành công
         documents[index] = docToConvert.copyWith(
           isConverting: false,
@@ -102,19 +134,28 @@ class DocumentNotifier extends _$DocumentNotifier {
           pdfBytes: pdfData.bytes,
           pdfPath: 'web_pdf', // Giá trị giả lập cho path khi trên web
           webUrl: pdfData.webUrl, // Lưu URL để xem trực tiếp
+          pdfId: pdfId, // Lưu PDF ID cho việc ký tên
         );
+
+        print('Đã cập nhật document với pdfId: ${documents[index].pdfId}');
       } else {
         // Xử lý chuyển đổi trên mobile
-        final filePath = await conversionService.convertDocxToPdf(
+        final pdfData = await conversionService.convertDocxToPdf(
           File(docToConvert.path),
         );
+
+        print(
+            'Đã chuyển đổi sang PDF, kết quả: filePath=${pdfData.filePath}, pdfId=${pdfData.pdfId}');
 
         // Cập nhật trạng thái đã chuyển đổi thành công
         documents[index] = docToConvert.copyWith(
           isConverting: false,
           isConverted: true,
-          pdfPath: filePath,
+          pdfPath: pdfData.filePath,
+          pdfId: pdfData.pdfId,
         );
+
+        print('Đã cập nhật document với pdfId: ${documents[index].pdfId}');
       }
 
       state = AsyncData(documents);
@@ -125,6 +166,7 @@ class DocumentNotifier extends _$DocumentNotifier {
         error: e.toString(),
       );
       state = AsyncData(documents);
+      print('Lỗi khi chuyển đổi document: $e');
     }
   }
 
@@ -133,6 +175,66 @@ class DocumentNotifier extends _$DocumentNotifier {
 
     final documents = [...state.value!];
     documents.removeAt(index);
+    state = AsyncData(documents);
+  }
+
+  // Phương thức để chuyển đến màn hình ký tài liệu
+  void navigateToSignDocument(int index, BuildContext context) {
+    if (state.valueOrNull == null) return;
+
+    final documents = state.value!;
+    if (index >= documents.length) return;
+
+    final document = documents[index];
+
+    // Kiểm tra xem file đã được chuyển đổi sang PDF chưa
+    if (!document.isConverted && !document.isPdf) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chuyển đổi tài liệu sang PDF trước khi ký'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Tạo PDF ID nếu không có (dù cho đã là PDF hoặc đã chuyển đổi)
+    var pdfId = document.pdfId;
+    if (pdfId == null || pdfId.isEmpty) {
+      pdfId = _generateTempPdfId(document.fileName);
+
+      // Cập nhật document với PDF ID mới
+      final updatedDocuments = [...documents];
+      updatedDocuments[index] = document.copyWith(pdfId: pdfId);
+      state = AsyncData(updatedDocuments);
+
+      print('Đã tạo PDF ID mới: $pdfId');
+    } else {
+      print('Sử dụng PDF ID hiện có: $pdfId');
+    }
+
+    // Chuyển đến màn hình ký tài liệu
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SignatureScreen(
+          pdfId: pdfId!,
+          fileName: document.isPdf
+              ? document.fileName
+              : document.fileName.replaceAll('.docx', '.pdf'),
+        ),
+      ),
+    );
+  }
+
+  // Đánh dấu tài liệu đã được ký
+  void markDocumentAsSigned(int index) {
+    if (state.valueOrNull == null) return;
+
+    final documents = [...state.value!];
+    if (index >= documents.length) return;
+
+    documents[index] = documents[index].copyWith(isSigned: true);
     state = AsyncData(documents);
   }
 }

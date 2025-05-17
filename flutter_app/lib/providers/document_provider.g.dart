@@ -6,7 +6,7 @@ part of 'document_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$documentNotifierHash() => r'd16042e0b8a00bf3d8b05a8cb13e7421ad7bc39e';
+String _$documentNotifierHash() => r'819e0e32360b0bc8b3a8a7ceb917222553670ca5';
 
 /// See also [DocumentNotifier].
 @ProviderFor(DocumentNotifier)

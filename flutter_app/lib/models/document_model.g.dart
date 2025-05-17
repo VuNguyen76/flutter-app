@@ -16,8 +16,10 @@ _$DocumentModelImpl _$$DocumentModelImplFromJson(Map<String, dynamic> json) =>
       pdfBytes:
           const Uint8ListConverter().fromJson(json['pdfBytes'] as List<int>?),
       webUrl: json['webUrl'] as String?,
+      pdfId: json['pdfId'] as String?,
       isConverting: json['isConverting'] as bool? ?? false,
       isConverted: json['isConverted'] as bool? ?? false,
+      isSigned: json['isSigned'] as bool? ?? false,
       error: json['error'] as String?,
     );
 
@@ -30,8 +32,10 @@ Map<String, dynamic> _$$DocumentModelImplToJson(_$DocumentModelImpl instance) =>
       'bytes': const Uint8ListConverter().toJson(instance.bytes),
       'pdfBytes': const Uint8ListConverter().toJson(instance.pdfBytes),
       'webUrl': instance.webUrl,
+      'pdfId': instance.pdfId,
       'isConverting': instance.isConverting,
       'isConverted': instance.isConverted,
+      'isSigned': instance.isSigned,
       'error': instance.error,
     };
 

@@ -136,11 +136,13 @@ class _SignatureScreenState extends State<SignatureScreen> {
             },
           ),
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _signedPdfUrl != null
-                ? _buildSignedPdfView()
-                : _buildSignatureForm(),
+        body: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _signedPdfUrl != null
+                  ? _buildSignedPdfView()
+                  : _buildSignatureForm(),
+        ),
       ),
     );
   }
@@ -159,14 +161,19 @@ class _SignatureScreenState extends State<SignatureScreen> {
   }
 
   Widget _buildSignatureForm() {
+    // Lấy kích thước màn hình để làm responsive
+    final size = MediaQuery.of(context).size;
+    final maxPreviewHeight =
+        size.height * 0.3; // Giới hạn chiều cao của preview PDF
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Preview PDF
+          // Preview PDF với chiều cao tự thích ứng
           Container(
-            height: 300,
+            height: maxPreviewHeight,
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey),
               borderRadius: BorderRadius.circular(8),
@@ -186,7 +193,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
                       ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // Signature Form
           if (_error != null)
@@ -229,7 +236,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
             onSign: (data, name) => _setSignatureA(data, name),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // Bên B
           _buildSignatureSection(
@@ -239,7 +246,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
             onSign: (data, name) => _setSignatureB(data, name),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
           // Button for signing
           Center(
@@ -255,6 +262,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
               onPressed: _isSigning ? null : _handleSignature,
             ),
           ),
+
+          // Thêm padding dưới để tránh bị overflow
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -282,7 +292,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
             color: Colors.black.withOpacity(0.05),
             spreadRadius: 1,
             blurRadius: 3,
-            offset: Offset(0, 1),
+            offset: const Offset(0, 1),
           ),
         ],
       ),
@@ -303,9 +313,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  height: 150,
+                  height: 120, // Giảm chiều cao của khung chữ ký đã ký
                   width: double.infinity,
-                  padding: EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(8),
@@ -327,7 +337,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
                       child: Text.rich(
                         TextSpan(
                           children: [
-                            TextSpan(
+                            const TextSpan(
                               text: 'Người ký: ',
                               style: TextStyle(
                                 fontWeight: FontWeight.w500,
@@ -336,7 +346,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
                             ),
                             TextSpan(
                               text: displayName,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                                 color: Colors.black87,
@@ -363,7 +373,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
           else
             Container(
               width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 32),
+              padding: const EdgeInsets.symmetric(vertical: 24), // Giảm padding
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade200),
                 borderRadius: BorderRadius.circular(8),
@@ -373,15 +383,15 @@ class _SignatureScreenState extends State<SignatureScreen> {
                 children: [
                   Icon(
                     Icons.draw_outlined,
-                    size: 48,
+                    size: 40, // Giảm kích thước icon
                     color: Colors.grey.shade400,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Text(
                     'Chưa có chữ ký',
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.draw),
                     label: const Text('Thêm chữ ký'),
@@ -406,7 +416,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
     required Function(String, String) onSign,
   }) {
     final SignatureController _controller = SignatureController(
-      penStrokeWidth: 8,
+      penStrokeWidth: 5, // Giảm độ dày của nét ký
       penColor: Colors.black,
       exportBackgroundColor: Colors.white,
     );
@@ -414,136 +424,147 @@ class _SignatureScreenState extends State<SignatureScreen> {
     final TextEditingController _nameController =
         TextEditingController(text: initialName);
 
+    // Lấy kích thước màn hình để làm responsive
+    final size = MediaQuery.of(context).size;
+    final signatureHeight = size.height * 0.3; // Tối đa 30% chiều cao màn hình
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Text("Vẽ chữ ký của bạn vào ô bên dưới:"),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400, width: 2),
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.white,
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 24,
+        ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 350,
-                  child: Signature(
-                    controller: _controller,
-                    backgroundColor: Colors.white,
+                const SizedBox(height: 16),
+                const Text("Vẽ chữ ký của bạn vào ô bên dưới:"),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade400, width: 2),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.clear),
-                    label: const Text('Xóa'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade100,
-                      foregroundColor: Colors.red.shade800,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: signatureHeight,
+                    child: Signature(
+                      controller: _controller,
+                      backgroundColor: Colors.white,
                     ),
-                    onPressed: () => _controller.clear(),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Tên người ký',
-                  hintText: 'Nhập tên của bạn',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
                 ),
-                controller: _nameController,
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Hủy'),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Xóa'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade100,
+                        foregroundColor: Colors.red.shade800,
+                      ),
+                      onPressed: () => _controller.clear(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: 'Tên người ký',
+                    hintText: 'Nhập tên của bạn',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: () async {
-                      if (_controller.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Vui lòng ký trước khi xác nhận')),
-                        );
-                        return;
-                      }
-
-                      try {
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (ctx) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-
-                        final signatureBytes = await _controller.toPngBytes(
-                          height: 600,
-                          width: 800,
-                        );
-
-                        Navigator.of(context).pop();
-
-                        if (signatureBytes == null) {
-                          throw Exception('Không thể xuất chữ ký');
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Hủy'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (_controller.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('Vui lòng ký trước khi xác nhận')),
+                          );
+                          return;
                         }
 
-                        final base64Image = base64Encode(signatureBytes);
-                        final signatureData =
-                            'data:image/png;base64,$base64Image';
+                        try {
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (ctx) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
 
-                        String name = _nameController.text.trim();
-                        if (name.isEmpty) {
-                          name = "Không có tên";
-                        } else if (name.length > 1) {
-                          name = name.split(' ').map((word) {
-                            if (word.isEmpty) return word;
-                            if (word.length == 1) return word.toUpperCase();
-                            return word[0].toUpperCase() + word.substring(1);
-                          }).join(' ');
-                        }
+                          final signatureBytes = await _controller.toPngBytes(
+                            height: 600,
+                            width: 800,
+                          );
 
-                        onSign(signatureData, name);
-                        Navigator.of(context).pop();
-                      } catch (e) {
-                        if (Navigator.canPop(context)) {
                           Navigator.of(context).pop();
-                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Lỗi khi xử lý chữ ký: $e')),
-                        );
-                      }
-                    },
-                    child: const Text('Xác nhận'),
-                  ),
-                ],
-              ),
-            ],
+                          if (signatureBytes == null) {
+                            throw Exception('Không thể xuất chữ ký');
+                          }
+
+                          final base64Image = base64Encode(signatureBytes);
+                          final signatureData =
+                              'data:image/png;base64,$base64Image';
+
+                          String name = _nameController.text.trim();
+                          if (name.isEmpty) {
+                            name = "Không có tên";
+                          } else if (name.length > 1) {
+                            name = name.split(' ').map((word) {
+                              if (word.isEmpty) return word;
+                              if (word.length == 1) return word.toUpperCase();
+                              return word[0].toUpperCase() + word.substring(1);
+                            }).join(' ');
+                          }
+
+                          onSign(signatureData, name);
+                          Navigator.of(context).pop();
+                        } catch (e) {
+                          if (Navigator.canPop(context)) {
+                            Navigator.of(context).pop();
+                          }
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Lỗi khi xử lý chữ ký: $e')),
+                          );
+                        }
+                      },
+                      child: const Text('Xác nhận'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

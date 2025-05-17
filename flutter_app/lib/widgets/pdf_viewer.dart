@@ -153,34 +153,36 @@ class PdfViewer extends HookConsumerWidget {
               ),
             ],
           ),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 16),
-                const Text('Lỗi khi hiển thị PDF',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: SelectableText(
-                    error.value!,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
+          body: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text('Lỗi khi hiển thị PDF',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: SelectableText(
+                      error.value!,
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                if (pdfUrl != null)
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('Mở trong trình duyệt'),
-                    onPressed: () {
-                      html.window.open(pdfUrl!, '_blank');
-                    },
-                  ),
-              ],
+                  const SizedBox(height: 16),
+                  if (pdfUrl != null)
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('Mở trong trình duyệt'),
+                      onPressed: () {
+                        html.window.open(pdfUrl!, '_blank');
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         );
@@ -196,39 +198,42 @@ class PdfViewer extends HookConsumerWidget {
             // Bỏ nút tải pdf
           ],
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: pdfBytes != null
-                  ? SimpleWebPdfViewer(pdfBytes: pdfBytes)
-                  : pdfUrl != null
-                      ? SimpleWebPdfViewer(pdfUrl: pdfUrl)
-                      : FutureBuilder<Uint8List?>(
-                          future: loadPdfFromUrl(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const Center(
-                                  child: CircularProgressIndicator());
-                            } else if (snapshot.hasError) {
-                              error.value = 'Lỗi tải PDF: ${snapshot.error}';
-                              return Center(
-                                child: Text('Lỗi: ${snapshot.error}'),
-                              );
-                            } else if (snapshot.hasData &&
-                                snapshot.data != null) {
-                              return SimpleWebPdfViewer(
-                                  pdfBytes: snapshot.data);
-                            } else {
-                              return const Center(
-                                child: Text('Không có dữ liệu PDF để hiển thị'),
-                              );
-                            }
-                          },
-                        ),
-            ),
-            if (isLoading.value) const LinearProgressIndicator(),
-          ],
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: pdfBytes != null
+                    ? SimpleWebPdfViewer(pdfBytes: pdfBytes)
+                    : pdfUrl != null
+                        ? SimpleWebPdfViewer(pdfUrl: pdfUrl)
+                        : FutureBuilder<Uint8List?>(
+                            future: loadPdfFromUrl(),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                    child: CircularProgressIndicator());
+                              } else if (snapshot.hasError) {
+                                error.value = 'Lỗi tải PDF: ${snapshot.error}';
+                                return Center(
+                                  child: Text('Lỗi: ${snapshot.error}'),
+                                );
+                              } else if (snapshot.hasData &&
+                                  snapshot.data != null) {
+                                return SimpleWebPdfViewer(
+                                    pdfBytes: snapshot.data);
+                              } else {
+                                return const Center(
+                                  child:
+                                      Text('Không có dữ liệu PDF để hiển thị'),
+                                );
+                              }
+                            },
+                          ),
+              ),
+              if (isLoading.value) const LinearProgressIndicator(),
+            ],
+          ),
         ),
       );
     }
@@ -255,35 +260,49 @@ class PdfViewer extends HookConsumerWidget {
             // Bỏ nút tải PDF
           ],
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: isReady.value
-                  ? PDFView(
-                      filePath: filePath,
-                      autoSpacing: true,
-                      pageFling: true,
-                      pageSnap: true,
-                      onRender: (pages) {
-                        isReady.value = true;
-                        totalPagesState.value = pages!;
-                      },
-                      onPageChanged: (page, total) {
-                        currentPageState.value = page!;
-                      },
-                      onError: (error) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $error'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      },
-                    )
-                  : const Center(child: CircularProgressIndicator()),
-            ),
-            if (isLoading.value) const LinearProgressIndicator(),
-          ],
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: isReady.value
+                    ? PDFView(
+                        filePath: filePath,
+                        autoSpacing: true,
+                        pageFling: true,
+                        pageSnap: true,
+                        onRender: (pages) {
+                          isReady.value = true;
+                          totalPagesState.value = pages!;
+                        },
+                        onPageChanged: (page, total) {
+                          currentPageState.value = page!;
+                        },
+                        onError: (error) {
+                          print('PDFView error: $error');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Lỗi: $error'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        },
+                        onViewCreated: (_) {
+                          // Đặt trạng thái isReady thành false trong trường hợp cần tải lại
+                          if (!isReady.value) {
+                            Future.delayed(const Duration(milliseconds: 500),
+                                () {
+                              if (!isReady.value) {
+                                isReady.value = true;
+                              }
+                            });
+                          }
+                        },
+                      )
+                    : const Center(child: CircularProgressIndicator()),
+              ),
+              if (isLoading.value) const LinearProgressIndicator(),
+            ],
+          ),
         ),
       );
     }

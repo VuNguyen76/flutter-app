@@ -115,15 +115,7 @@ class DocumentItem extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (!document.isPdf && !document.isConverted)
-          IconButton(
-            icon: const Icon(
-              Icons.sync,
-              color: Color(0xFF2196F3), // Light Blue 500
-            ),
-            tooltip: 'Chuyển đổi sang PDF',
-            onPressed: document.isConverting ? null : onConvert,
-          ),
+        // Đã bỏ nút chuyển đổi thủ công vì tài liệu sẽ được tự động chuyển đổi
         if (document.isPdf || document.isConverted)
           IconButton(
             icon: Icon(

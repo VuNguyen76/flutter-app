@@ -29,48 +29,99 @@ class DocumentNotifier extends _$DocumentNotifier {
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
 
-      if (kIsWeb) {
-        // Xử lý trên nền tảng web
-        if (file.bytes != null) {
-          final fileName = file.name;
-          final isPdf = fileName.toLowerCase().endsWith('.pdf');
+      // Kiểm tra xem file có phải là PDF hay không
+      final isPdf = file.name.toLowerCase().endsWith('.pdf');
 
-          // Tạo đối tượng DocumentModel
-          final document = DocumentModel(
-            fileName: fileName,
-            path: 'web_file', // Giá trị tạm thời cho path trên web
-            isPdf: isPdf,
-            bytes: file.bytes,
-            pdfId: isPdf
-                ? _generateTempPdfId(fileName)
-                : null, // Tạo ID tạm nếu là PDF
-          );
+      // Nếu là PDF, thêm vào danh sách như bình thường
+      if (isPdf) {
+        if (kIsWeb) {
+          // Xử lý trên nền tảng web
+          if (file.bytes != null) {
+            final fileName = file.name;
 
-          if (isPdf) {
+            // Tạo đối tượng DocumentModel
+            final document = DocumentModel(
+              fileName: fileName,
+              path: 'web_file', // Giá trị tạm thời cho path trên web
+              isPdf: true,
+              bytes: file.bytes,
+              pdfId: _generateTempPdfId(fileName),
+            );
+
             print('Tạo PDF ID cho file đã chọn: ${document.pdfId}');
+            state = AsyncData([...state.valueOrNull ?? [], document]);
           }
+        } else {
+          // Xử lý trên nền tảng mobile
+          if (file.path != null) {
+            final document = DocumentModel(
+              fileName: file.name,
+              path: file.path!,
+              isPdf: true,
+              pdfId: _generateTempPdfId(file.name),
+            );
 
-          state = AsyncData([...state.valueOrNull ?? [], document]);
+            print('Tạo PDF ID cho file đã chọn: ${document.pdfId}');
+            state = AsyncData([...state.valueOrNull ?? [], document]);
+          }
         }
-      } else {
-        // Xử lý trên nền tảng mobile
-        if (file.path != null) {
-          // Kiểm tra xem file có phải là PDF hay không
-          final isPdf = file.path!.toLowerCase().endsWith('.pdf');
-          final document = DocumentModel(
-            fileName: file.name,
-            path: file.path!,
-            isPdf: isPdf,
-            pdfId: isPdf
-                ? _generateTempPdfId(file.name)
-                : null, // Tạo ID tạm nếu là PDF
-          );
+      }
+      // Nếu là DOCX, thêm vào danh sách và tự động chuyển đổi
+      else {
+        if (kIsWeb) {
+          // Xử lý trên nền tảng web
+          if (file.bytes != null) {
+            final fileName = file.name;
 
-          if (isPdf) {
-            print('Tạo PDF ID cho file đã chọn: ${document.pdfId}');
+            // Tạo đối tượng DocumentModel tạm thời
+            final tempDocument = DocumentModel(
+              fileName: fileName,
+              path: 'web_file', // Giá trị tạm thời cho path trên web
+              isPdf: false,
+              bytes: file.bytes,
+            );
+
+            // Thêm vào danh sách với trạng thái đang chuyển đổi
+            final currentDocuments = state.valueOrNull ?? [];
+            final newDocuments = [
+              ...currentDocuments,
+              tempDocument.copyWith(isConverting: true)
+            ];
+            state = AsyncData(newDocuments);
+
+            // Tự động chuyển đổi
+            try {
+              final index = newDocuments.length - 1;
+              await _convertDocumentInternal(index);
+            } catch (e) {
+              print('Lỗi khi tự động chuyển đổi: $e');
+            }
           }
+        } else {
+          // Xử lý trên nền tảng mobile
+          if (file.path != null) {
+            final document = DocumentModel(
+              fileName: file.name,
+              path: file.path!,
+              isPdf: false,
+            );
 
-          state = AsyncData([...state.valueOrNull ?? [], document]);
+            // Thêm vào danh sách với trạng thái đang chuyển đổi
+            final currentDocuments = state.valueOrNull ?? [];
+            final newDocuments = [
+              ...currentDocuments,
+              document.copyWith(isConverting: true)
+            ];
+            state = AsyncData(newDocuments);
+
+            // Tự động chuyển đổi
+            try {
+              final index = newDocuments.length - 1;
+              await _convertDocumentInternal(index);
+            } catch (e) {
+              print('Lỗi khi tự động chuyển đổi: $e');
+            }
+          }
         }
       }
     }
@@ -82,18 +133,15 @@ class DocumentNotifier extends _$DocumentNotifier {
     return 'local_${timestamp}_${fileName.hashCode}';
   }
 
-  Future<void> convertDocument(int index) async {
+  // Private method that handles conversion logic - refactored from convertDocument
+  Future<void> _convertDocumentInternal(int index) async {
     if (state.valueOrNull == null) return;
 
     final documents = [...state.value!];
     final docToConvert = documents[index];
 
     // Nếu đã là PDF hoặc đang chuyển đổi, không làm gì cả
-    if (docToConvert.isPdf || docToConvert.isConverting) return;
-
-    // Cập nhật trạng thái đang chuyển đổi
-    documents[index] = docToConvert.copyWith(isConverting: true, error: null);
-    state = AsyncData(documents);
+    if (docToConvert.isPdf) return;
 
     try {
       final conversionService = ConversionService();
@@ -168,6 +216,23 @@ class DocumentNotifier extends _$DocumentNotifier {
       state = AsyncData(documents);
       print('Lỗi khi chuyển đổi document: $e');
     }
+  }
+
+  // Public method that's called from the UI - now just delegates to _convertDocumentInternal
+  Future<void> convertDocument(int index) async {
+    if (state.valueOrNull == null) return;
+
+    final documents = [...state.value!];
+    final docToConvert = documents[index];
+
+    // Nếu đã là PDF hoặc đang chuyển đổi, không làm gì cả
+    if (docToConvert.isPdf || docToConvert.isConverting) return;
+
+    // Cập nhật trạng thái đang chuyển đổi
+    documents[index] = docToConvert.copyWith(isConverting: true, error: null);
+    state = AsyncData(documents);
+
+    await _convertDocumentInternal(index);
   }
 
   void removeDocument(int index) {

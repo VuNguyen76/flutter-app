@@ -193,11 +193,7 @@ class PdfViewer extends HookConsumerWidget {
             style: const TextStyle(fontSize: 16),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              tooltip: 'Tải PDF',
-              onPressed: isLoading.value ? null : downloadPdf,
-            ),
+            // Bỏ nút tải pdf
           ],
         ),
         body: Column(
@@ -256,11 +252,7 @@ class PdfViewer extends HookConsumerWidget {
                   ),
                 ),
               ),
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              tooltip: 'Tải PDF',
-              onPressed: isLoading.value ? null : downloadPdf,
-            ),
+            // Bỏ nút tải PDF
           ],
         ),
         body: Column(

@@ -126,11 +126,11 @@ class DocumentItem extends StatelessWidget {
           ),
         if (document.isPdf || document.isConverted)
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.visibility,
-              color: Color(0xFF2196F3), // Light Blue 500
+              color: document.isSigned ? Colors.green : const Color(0xFF2196F3),
             ),
-            tooltip: 'Xem tài liệu',
+            tooltip: document.isSigned ? 'Xem tài liệu đã ký' : 'Xem tài liệu',
             onPressed: onView,
           ),
         // Thêm nút ký tài liệu nếu tài liệu là PDF hoặc đã chuyển đổi và có onSign callback
@@ -163,7 +163,7 @@ class DocumentItem extends StatelessWidget {
     } else if (document.error != null) {
       return Colors.red;
     } else if (document.isSigned) {
-      return Colors.green;
+      return Colors.green.shade600;
     } else if (document.isConverted) {
       return const Color(0xFF2196F3); // Light Blue 500
     } else if (document.isPdf) {
@@ -179,7 +179,7 @@ class DocumentItem extends StatelessWidget {
     } else if (document.error != null) {
       return 'Lỗi';
     } else if (document.isSigned) {
-      return 'Đã ký';
+      return 'Đã ký thành công';
     } else if (document.isConverted) {
       return 'Đã chuyển đổi';
     } else if (document.isPdf) {

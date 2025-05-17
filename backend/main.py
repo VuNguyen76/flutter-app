@@ -16,24 +16,47 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.utils import ImageReader
 from PIL import Image
-
+from datetime import datetime
+import unicodedata
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+VIETNAMESE_FONT_AVAILABLE = False
+try:
+    font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf')
+    if os.path.exists(font_path):
+        pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans-Bold.ttf')))
+        VIETNAMESE_FONT_AVAILABLE = True
+        print("Đã đăng ký font DejaVuSans để hỗ trợ tiếng Việt")
+    else:
+        noto_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSans-Regular.ttf')
+        if os.path.exists(noto_path):
+            pdfmetrics.registerFont(TTFont('NotoSans', noto_path))
+            pdfmetrics.registerFont(TTFont('NotoSans-Bold', os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSans-Bold.ttf')))
+            VIETNAMESE_FONT_AVAILABLE = True
+            print("Đã đăng ký font NotoSans để hỗ trợ tiếng Việt")
+        else:
+            raise Exception("Không tìm thấy font hỗ trợ tiếng Việt")
+except Exception as e:
+    VIETNAMESE_FONT_AVAILABLE = False
+    print(f"Không thể đăng ký font hỗ trợ tiếng Việt: {str(e)}")
+    print("Sử dụng font Helvetica mặc định của ReportLab")
+def normalize_vietnamese_text(text):
+    if not VIETNAMESE_FONT_AVAILABLE:
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join([c for c in text if not unicodedata.combining(c)])
+    return text
 app = FastAPI(title="DOCX to PDF Converter")
-
-# Cấu hình CORS để cho phép truy cập từ ứng dụng Flutter
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Trong môi trường production, nên giới hạn origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Đảm bảo thư mục temp tồn tại
 os.makedirs("temp", exist_ok=True)
 os.makedirs("static/pdfs", exist_ok=True)
 os.makedirs("static/signatures", exist_ok=True)
-
-# Mount thư mục static để phục vụ các file tĩnh
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
@@ -48,18 +71,12 @@ async def view_pdf(pdf_id: str):
     if not os.path.exists(pdf_path):
         print(f"PDF không tồn tại: {pdf_path}")
         raise HTTPException(status_code=404, detail="PDF không tồn tại")
-    
-    # Ghi log kích thước file
     file_size = os.path.getsize(pdf_path)
-    
-    # Kiểm tra file có phải PDF không và log chi tiết hơn
     try:
         with open(pdf_path, 'rb') as f:
-            header = f.read(10)  # Đọc nhiều byte hơn để kiểm tra kỹ lưỡng hơn
+            header = f.read(10)
             header_hex = ' '.join([f'{b:02x}' for b in header])
             print(f"PDF header (hex): {header_hex}")
-            
-            # Kiểm tra signature của PDF
             if not header.startswith(b'%PDF-'):
                 print(f"File không phải định dạng PDF, header: {header_hex}")
                 raise HTTPException(status_code=400, detail="File không phải định dạng PDF")
@@ -72,8 +89,7 @@ async def view_pdf(pdf_id: str):
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc file: {str(e)}")
     
     print(f"Trả về file PDF: {pdf_path}, kích thước: {file_size} bytes")
-    
-    # Tạo response với các header rõ ràng hơn
+
     response = FileResponse(
         path=pdf_path,
         media_type="application/pdf",
@@ -92,8 +108,7 @@ async def view_pdf(pdf_id: str):
 async def convert_docx_to_pdf(file: UploadFile = File(...)):
     # Log để debug
     print(f"Nhận yêu cầu chuyển đổi file: {file.filename}")
-    
-    # Kiểm tra file có phải là docx không
+
     if not file.filename.endswith('.docx'):
         raise HTTPException(status_code=400, detail="Chỉ chấp nhận file DOCX")
     
@@ -262,7 +277,7 @@ def add_signatures_to_pdf(
     signature_b_path: Optional[str],
     signature_b_name: Optional[str]
 ) -> None:
-    """Thêm chữ ký vào PDF"""
+    """Thêm chữ ký vào PDF bằng cách tạo trang mới"""
     try:
         print(f"Bắt đầu thêm chữ ký vào PDF: {original_pdf_path}")
         print(f"Chữ ký A: {signature_a_path}, Tên A: {signature_a_name}")
@@ -303,20 +318,60 @@ def add_signatures_to_pdf(
             writer.add_page(reader.pages[i])
             print(f"Đã thêm trang {i+1}/{len(reader.pages)} vào writer")
         
-        # Tạo overlay cho chữ ký
-        signature_overlay = BytesIO()
-        c = canvas.Canvas(signature_overlay, pagesize=A4)
+        # Tạo trang mới cho chữ ký
+        signature_page = BytesIO()
+        c = canvas.Canvas(signature_page, pagesize=A4)
         
         # Kích thước trang A4 (595 x 842 points)
         width, height = A4
         print(f"Kích thước trang A4: {width} x {height} points")
         
-        # Vẽ khung chữ ký ở cuối trang cuối cùng
+        # Kiểm tra và sử dụng font phù hợp
+        if VIETNAMESE_FONT_AVAILABLE:
+            # Kiểm tra xem DejaVu hay Noto Sans đang được sử dụng
+            dejavu_path = os.path.join(os.path.dirname(__file__), 'fonts', 'DejaVuSans.ttf')
+            if os.path.exists(dejavu_path):
+                print("Sử dụng font DejaVuSans cho tiếng Việt")
+                main_font = "DejaVuSans"
+                bold_font = "DejaVuSans-Bold"
+            else:
+                print("Sử dụng font NotoSans cho tiếng Việt")
+                main_font = "NotoSans"
+                bold_font = "NotoSans-Bold"
+        else:
+            print("Sử dụng font Helvetica (không hỗ trợ đầy đủ tiếng Việt)")
+            main_font = "Helvetica"
+            bold_font = "Helvetica-Bold"
+            
+        # Các tiêu đề và nhãn tiếng Việt
+        title = normalize_vietnamese_text("TRANG CHỮ KÝ XÁC NHẬN")
+        subtitle = normalize_vietnamese_text("Tài liệu này đã được ký điện tử bởi các bên")
+        party_a = normalize_vietnamese_text("BÊN A")
+        party_b = normalize_vietnamese_text("BÊN B")
+        current_date = datetime.now().strftime("%d/%m/%Y")
+        date_label = normalize_vietnamese_text(f"Ngày ký: {current_date}")
+        
+        # Đặt text rendering mode để tối ưu cho tiếng Việt
+        c.setFillColorRGB(0, 0, 0)  # Đảm bảo màu chữ là đen
+        
+        # Thêm tiêu đề trang chữ ký
+        c.setFont(bold_font, 18)
+        
+        # Vẽ các tiêu đề
+        c.drawString(width/2 - 110, height - 50, title)
+        c.setFont(main_font, 12)
+        c.drawString(width/2 - 140, height - 70, subtitle)
+        
+        # Vẽ đường kẻ ngang
+        c.setLineWidth(1)
+        c.line(50, height - 90, width - 50, height - 90)
+        
+        # Vẽ khung chữ ký
         # Bên A - Bên trái
         c.setLineWidth(1)
-        c.rect(50, 100, 200, 120)  # x, y, width, height
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(90, 200, "ĐẠI DIỆN BÊN A")
+        c.rect(50, height/2 - 50, 230, 150)  # Tăng kích thước từ 200x120 lên 230x150
+        c.setFont(bold_font, 14)
+        c.drawString(145, height/2 + 120, party_a)
         print("Đã vẽ khung chữ ký bên A")
         
         # Thêm chữ ký và tên nếu có
@@ -328,22 +383,32 @@ def add_signatures_to_pdf(
                     img = Image.open(signature_a_path)
                     img_width, img_height = img.size
                     print(f"Đã mở ảnh chữ ký A, kích thước: {img_width}x{img_height} px")
-                    c.drawImage(ImageReader(img), 75, 120, width=150, preserveAspectRatio=True)
+                    
+                    # Căn giữa chữ ký trong khung
+                    sig_width = 180
+                    sig_x = 50 + (230 - sig_width) / 2
+                    sig_y = height/2 - 30
+                    
+                    c.drawImage(ImageReader(img), sig_x, sig_y, width=sig_width, height=120, preserveAspectRatio=True)
                     print("Đã thêm ảnh chữ ký A vào PDF")
             except Exception as img_error:
                 print(f"Lỗi khi thêm ảnh chữ ký A: {str(img_error)}")
                 # Tiếp tục mà không dừng lại
         
         if signature_a_name:
-            c.setFont("Helvetica", 11)
-            c.drawString(75, 105, signature_a_name)
+            # Căn giữa tên người ký với font lớn hơn
+            c.setFont(bold_font, 12)
+            signature_a_name = normalize_vietnamese_text(signature_a_name)
+            text_width = c.stringWidth(signature_a_name, bold_font, 12)
+            text_x = 50 + (230 - text_width) / 2
+            c.drawString(text_x, height/2 - 45, signature_a_name)
             print(f"Đã thêm tên A: {signature_a_name}")
         
         # Bên B - Bên phải
         c.setLineWidth(1)
-        c.rect(345, 100, 200, 120)  # x, y, width, height
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(385, 200, "ĐẠI DIỆN BÊN B")
+        c.rect(315, height/2 - 50, 230, 150)  # Tăng kích thước từ 200x120 lên 230x150
+        c.setFont(bold_font, 14)
+        c.drawString(410, height/2 + 120, party_b)
         print("Đã vẽ khung chữ ký bên B")
         
         # Thêm chữ ký và tên nếu có
@@ -355,31 +420,44 @@ def add_signatures_to_pdf(
                     img = Image.open(signature_b_path)
                     img_width, img_height = img.size
                     print(f"Đã mở ảnh chữ ký B, kích thước: {img_width}x{img_height} px")
-                    c.drawImage(ImageReader(img), 370, 120, width=150, preserveAspectRatio=True)
+                    
+                    # Căn giữa chữ ký trong khung
+                    sig_width = 180
+                    sig_x = 315 + (230 - sig_width) / 2
+                    sig_y = height/2 - 30
+                    
+                    c.drawImage(ImageReader(img), sig_x, sig_y, width=sig_width, height=120, preserveAspectRatio=True)
                     print("Đã thêm ảnh chữ ký B vào PDF")
             except Exception as img_error:
                 print(f"Lỗi khi thêm ảnh chữ ký B: {str(img_error)}")
                 # Tiếp tục mà không dừng lại
         
         if signature_b_name:
-            c.setFont("Helvetica", 11)
-            c.drawString(370, 105, signature_b_name)
+            # Căn giữa tên người ký với font lớn hơn
+            c.setFont(bold_font, 12)
+            signature_b_name = normalize_vietnamese_text(signature_b_name)
+            text_width = c.stringWidth(signature_b_name, bold_font, 12)
+            text_x = 315 + (230 - text_width) / 2
+            c.drawString(text_x, height/2 - 45, signature_b_name)
             print(f"Đã thêm tên B: {signature_b_name}")
+        
+        # Thêm ngày tháng ở cuối trang
+        c.setFont(main_font, 10)
+        c.drawString(width/2 - 50, 50, date_label)
         
         # Lưu canvas
         c.save()
-        print("Đã lưu canvas chữ ký")
+        print("Đã lưu canvas trang chữ ký")
         
-        # Đọc overlay chữ ký
-        signature_overlay.seek(0)
+        # Đọc trang chữ ký
+        signature_page.seek(0)
         try:
-            overlay_pdf = PdfReader(signature_overlay)
-            print(f"Đã đọc overlay PDF, số trang: {len(overlay_pdf.pages)}")
+            signature_pdf = PdfReader(signature_page)
+            print(f"Đã đọc trang chữ ký PDF, số trang: {len(signature_pdf.pages)}")
             
-            # Áp dụng overlay lên trang cuối cùng của PDF
-            page = writer.pages[-1]
-            page.merge_page(overlay_pdf.pages[0])
-            print("Đã merge overlay vào trang cuối cùng của PDF")
+            # Thêm trang chữ ký vào PDF
+            writer.add_page(signature_pdf.pages[0])
+            print("Đã thêm trang chữ ký vào PDF")
             
             # Tạo thư mục đích nếu không tồn tại
             output_dir = os.path.dirname(output_pdf_path)
@@ -410,7 +488,7 @@ def add_signatures_to_pdf(
                 print(error_msg)
                 raise Exception(error_msg)
         except Exception as pdf_error:
-            print(f"Lỗi khi xử lý overlay PDF: {str(pdf_error)}")
+            print(f"Lỗi khi xử lý trang chữ ký PDF: {str(pdf_error)}")
             raise pdf_error
         
     except Exception as e:

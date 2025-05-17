@@ -229,7 +229,29 @@ class DocumentNotifier extends _$DocumentNotifier {
           filePath: filePath,
         ),
       ),
-    );
+    ).then((result) {
+      // Xử lý kết quả trả về từ màn hình ký
+      if (result != null && result is Map<String, dynamic>) {
+        if (result['signed'] == true) {
+          // Đánh dấu tài liệu đã được ký
+          final updatedDocuments = [...documents];
+          updatedDocuments[index] = document.copyWith(
+            isSigned: true,
+            pdfPath: result['url'] ?? document.pdfPath,
+            webUrl: result['url'] ?? document.webUrl,
+          );
+          state = AsyncData(updatedDocuments);
+
+          // Hiển thị thông báo thành công
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tài liệu đã được ký thành công'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    });
   }
 
   // Đánh dấu tài liệu đã được ký
